@@ -23,6 +23,44 @@ A privacy-focused social media platform that uses facial recognition to detect p
 - Dashboard for managing pending approvals
 - Auto-approve option for users
 
+## Face Recognition Setup
+
+### Installing Face Models
+
+1. Create a directory for face models:
+
+   ```bash
+   mkdir -p Backend/models/face_models
+   ```
+
+2. Clone the face-api.js models:
+
+   ```bash
+   git clone https://github.com/justadudewhohacks/face-api.js-models.git Backend/models/face_models
+   ```
+
+3. Verify the following model files are present in Backend/models/face_models:
+   - ssd_mobilenetv1
+   - face_recognition
+   - face_landmark_68
+
+### Model Loading Configuration
+
+The system automatically loads these models on startup through the `faceApiModelLoader.js` utility. Make sure:
+
+- Models are in the correct directory structure
+- Your application has read permissions for the model files
+- You have sufficient RAM (approximately 200MB) for model loading
+
+### Troubleshooting Face Recognition
+
+If face recognition isn't working:
+
+1. Check console logs for model loading success message
+2. Ensure all model files are properly downloaded
+3. Verify image quality for face detection
+4. Check if the face detection threshold (0.5) needs adjustment in uploadRouter.js
+
 ## API Endpoints
 
 ### User Management
