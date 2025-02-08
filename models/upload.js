@@ -12,14 +12,18 @@ const StatusSchema = new mongoose.Schema({
 
 const UploadSchema = new mongoose.Schema(
   {
-    uploader: { type: mongoose.Schema.Types.ObjectId, ref: "user" }, // Who uploaded
+    uploader: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Who uploaded
     fileUrl: { type: Buffer, required: true }, // File storage URL (S3, Firebase, etc.)
     detectedUsers: [StatusSchema], // List of detected users and their approval status
     finalStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "pending",
-    }, // Overall status
+    },
+    description:{
+      type:String,
+      required:true
+    } // Overall status
   },
   { timestamps: true }
 );

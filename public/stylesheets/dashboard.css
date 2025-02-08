@@ -1,0 +1,11 @@
+body{
+    background: linear-gradient(135deg, #8fa2f7, #9061be);
+}
+.logout{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.logout-btn{
+    width: 20%;
+}

@@ -1,25 +1,25 @@
 const express = require("express");
 const multer = require("multer");
-const faceapi = require("../utils/faceModelLoader").faceapi;
+const faceapi = require("../utils/faceApiModelLoader").faceapi;
 const canvas = require("canvas");
 
 const Upload = require("../models/upload");
 const User = require("../models/userModel");
-
+const isLoggedIn=require('../middlewares/isLoggedIn')
 const router = express.Router();
 
-// Multer Setup for File Uploads
+// // Multer Setup for File Uploads
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-/**
- * @route   POST /api/uploads
- * @desc    Upload an image & detect users using Face Recognition
- * @access  Public
- */
-router.post("/", upload.single("file"), async (req, res) => {
+// /**
+//  * @route   POST /api/uploads
+//  * @desc    Upload an image & detect users using Face Recognition
+//  * @access  Public
+//  */
+router.post("/upload", upload.single("img"), isLoggedIn, async (req, res) => {
     try {
-        const { uploaderId } = req.body;
+        const { description } = req.body;
         const fileBuffer = req.file.buffer;
 
         // Convert buffer to Image for face detection
@@ -31,7 +31,7 @@ router.post("/", upload.single("file"), async (req, res) => {
         }
 
         // Fetch stored users from DB
-        const users = await User.find({});
+        const users = await User.find();
         const matchedUsers = [];
 
         for (let detectedFace of detections) {
@@ -54,13 +54,21 @@ router.post("/", upload.single("file"), async (req, res) => {
         }
 
         // Create upload entry in DB
-        const newUpload = new Upload({
-            uploader: uploaderId,
-            fileUrl: "mock_url_for_storage", // Replace with actual storage URL later
-            detectedUsers: matchedUsers.map(userId => ({ user: userId, status: "pending" }))
+        const newUpload = await Upload.create({
+            uploader: req.user.id,
+            fileUrl: fileBuffer, // Replace with actual storage URL later
+            detectedUsers: matchedUsers.map(userId => ({ user: userId, status: "pending" })),
+            description
         });
 
-        await newUpload.save();
+        // **Update pendingApprovals for matched users**
+        await User.updateMany(
+            { _id: { $in: matchedUsers } }, // Find all detected users
+            { $push: { pendingApprovals: newUpload._id } } // Push new upload ID to their pendingApprovals
+        );
+        await User.findByIdAndUpdate(req.user.id, {
+            $push: { pendingUploads: upload._id },
+          });
         res.status(201).json({ message: "Upload created, waiting for approvals", uploadId: newUpload._id });
 
     } catch (err) {
@@ -69,94 +77,108 @@ router.post("/", upload.single("file"), async (req, res) => {
     }
 });
 
+router.post("/:uploadId/approve", async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const upload = await Upload.findById(req.params.uploadId).populate("uploader");
 
-// router.post("/:uploadId/approve", async (req, res) => {
-//     try {
-//         const { userId } = req.body;
-//         const upload = await Upload.findById(req.params.uploadId);
+        if (!upload) {
+            return res.status(404).json({ message: "Upload not found" });
+        }
 
-//         if (!upload) {
-//             return res.status(404).json({ message: "Upload not found" });
-//         }
+        // Find the user in detectedUsers array
+        const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
+        if (!userApproval) {
+            return res.status(403).json({ message: "You are not in this upload" });
+        }
 
-//         // Find the user in the detectedUsers array
-//         const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
+        // Update status to "approved"
+        userApproval.status = "approved";
+        
+        // Check if all detected users have approved
+        const allApproved = upload.detectedUsers.every(user => user.status === "approved");
+        if (allApproved) {
+            upload.finalStatus = "approved";
 
-//         if (!userApproval) {
-//             return res.status(403).json({ message: "You are not in this upload" });
-//         }
+            // Ensure uploader exists and update their uploads array
+            const uploader = await User.findById(upload.uploader._id);
+            if (uploader) {
+                uploader.uploads.push(upload._id);
+                await uploader.save();
+            }
+        }
 
-//         // Update status to "approved"
-//         userApproval.status = "approved";
+        await upload.save();
+        
+        res.json({ message: "Approval granted", finalStatus: upload.finalStatus });
 
-//         // Check if all detected users have approved
-//         upload.checkApproval();
-//         await upload.save();
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
 
-//         res.json({ message: "Approval granted", finalStatus: upload.finalStatus });
+router.post("/:uploadId/reject", async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const upload = await Upload.findById(req.params.uploadId).populate("uploader");
 
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ message: "Server error" });
-//     }
-// });
-// router.post("/:uploadId/reject", async (req, res) => {
-//     try {
-//         const { userId } = req.body;
-//         const upload = await Upload.findById(req.params.uploadId);
+        if (!upload) {
+            return res.status(404).json({ message: "Upload not found" });
+        }
 
-//         if (!upload) {
-//             return res.status(404).json({ message: "Upload not found" });
-//         }
+        const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
+        if (!userApproval) {
+            return res.status(403).json({ message: "You are not in this upload" });
+        }
 
-//         const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
+        // Update status to "rejected"
+        userApproval.status = "rejected";
 
-//         if (!userApproval) {
-//             return res.status(403).json({ message: "You are not in this upload" });
-//         }
+        // If any user rejects, mark entire upload as "rejected"
+        upload.finalStatus = "rejected";
 
-//         // Update status to "rejected"
-//         userApproval.status = "rejected";
+        await upload.save();
 
-//         // If any user rejects, mark entire upload as "rejected"
-//         upload.finalStatus = "rejected";
-//         await upload.save();
+        res.json({ 
+            message: `Your request for '${upload.description}' has been rejected`, 
+            finalStatus: upload.finalStatus 
+        });
 
-//         res.json({ message: "Upload rejected", finalStatus: upload.finalStatus });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
 
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ message: "Server error" });
-//     }
-// });
-// router.get("/:uploadId/status", async (req, res) => {
-//     try {
-//         const upload = await Upload.findById(req.params.uploadId);
+router.get("/:uploadId/status", async (req, res) => {
+    try {
+        const upload = await Upload.findById(req.params.uploadId);
 
-//         if (!upload) {
-//             return res.status(404).json({ message: "Upload not found" });
-//         }
+        if (!upload) {
+            return res.status(404).json({ message: "Upload not found" });
+        }
 
-//         res.json({ finalStatus: upload.finalStatus, detectedUsers: upload.detectedUsers });
+        res.json({ finalStatus: upload.finalStatus, detectedUsers: upload.detectedUsers });
 
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ message: "Server error" });
-//     }
-// });
-// router.get("/pending/:userId", async (req, res) => {
-//     try {
-//         const pendingUploads = await Upload.find({
-//             "detectedUsers.user": req.params.userId,
-//             "detectedUsers.status": "pending"
-//         });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+router.get("/pending/:userId", async (req, res) => {
+    try {
+        const pendingUploads = await Upload.find({
+            "detectedUsers.user": req.params.userId,
+            "detectedUsers.status": "pending"
+        });
 
-//         res.json(pendingUploads);
+        res.json(pendingUploads);
 
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ message: "Server error" });
-//     }
-// });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
 
-// module.exports = router;
+module.exports = router;

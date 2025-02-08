@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/stylesheets/dashboard.css">
+</head>
+<body class="bg-light">
+  <div class="container my-5">
+    <div class="card p-4 shadow">
+      <div class="d-flex align-items-center mb-4">
+        <img src="data:image/jpeg;base64,<%= user.profilePicture.toString('base64') %>" alt="Profile Pic" class="rounded-circle me-3" width="80">
+        <h2>Welcome, <%= user.name %>!</h2>
+      </div>
+
+      <!-- Upload Image -->
+      <h4>Upload Image</h4>
+      <form action="/uploads/upload" method="POST" enctype="multipart/form-data" class="mb-4">
+        <div class="mb-3">
+          <input type="file" name="img" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <input type="text" name="description" class="form-control" placeholder="Description" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </form>
+
+      <!-- Pending Uploads -->
+      <h4>Your Pending Uploads</h4>
+      <ul class="list-group mb-4">
+        <% if (user.pendingUploads.length === 0) { %>
+          <li class="list-group-item">No pending uploads.</li>
+        <% } else { %>
+          <% user.pendingUploads.forEach(upload => { %>
+            <li class="list-group-item">
+              <h5>Uploaded by: <%= upload.uploader.name %></h5>
+              <img src="data:image/jpeg;base64,<%= upload.fileUrl.toString('base64') %>" class="img-thumbnail" width="100">
+              <p><strong>Description:</strong> <%= upload.description %></p>
+              <p>
+                <strong>Status:</strong>
+                <% if (upload.finalStatus === "pending") { %> 🟡 Waiting for approval
+                <% } else if (upload.finalStatus === "rejected") { %> ❌ Rejected
+                <% } else { %> ✅ Approved
+                <% } %>
+              </p>
+            </li>
+          <% }); %>
+        <% } %>
+      </ul>
+
+      <!-- Approved Uploads -->
+      <h4>Approved Uploads</h4>
+      <ul class="list-group mb-4">
+        <% user.uploads.forEach(upload => { %>
+          <li class="list-group-item">
+            <h5>Uploaded by: <%= upload.uploader.name %></h5>
+            <img src="data:image/jpeg;base64,<%= upload.fileUrl.toString('base64') %>" class="img-thumbnail" width="100">
+            <p><strong>Description:</strong> <%= upload.description %></p>
+            <p><strong>Status:</strong> ✅ Approved</p>
+          </li>
+        <% }); %>
+      </ul>
+
+      <!-- Pending Consent Requests -->
+      <h4>Pending Consent Requests</h4>
+      <ul class="list-group mb-4">
+        <% user.pendingApprovals.forEach(request => { %>
+          <li class="list-group-item">
+            <h5>Sender: <%= request.uploader.name %></h5>
+            <img src="data:image/jpeg;base64,<%= request.fileUrl.toString('base64') %>" class="img-thumbnail" width="100">
+            <p><strong>Description:</strong> <%= request.description %></p>
+            <p><strong>Status:</strong> 🟡 Pending</p>
+            <form action="/uploads/<%= request._id %>/approve" method="POST" class="d-inline">
+              <input type="hidden" name="userId" value="<%= user._id %>">
+              <button type="submit" class="btn btn-success btn-sm">Approve</button>
+            </form>
+            <form action="/uploads/<%= request._id %>/reject" method="POST" class="d-inline">
+              <input type="hidden" name="userId" value="<%= user._id %>">
+              <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+            </form>
+          </li>
+        <% }); %>
+      </ul>
+      <div class="logout">
+        <a href="/users/logout" class="btn btn-outline-danger logout-btn">Logout</a>
+      </div>
+      
+    </div>
+  </div>
+</body>
+</html>
