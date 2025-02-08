@@ -1,8 +1,8 @@
 const express = require("express");
 const multer = require("multer");
-const faceapi = require("face-api.js");
+const faceapi = require("../utils/faceModelLoader").faceapi;
 const canvas = require("canvas");
-const path = require("path");
+
 const Upload = require("../models/upload");
 const User = require("../models/userModel");
 
@@ -11,18 +11,6 @@ const router = express.Router();
 // Multer Setup for File Uploads
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
-
-// Load face-api.js models
-const { Canvas, Image, ImageData } = canvas;
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
-
-async function loadModels() {
-    const modelPath = path.join(__dirname, "../models/face_models");
-    await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
-    await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
-    await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
-}
-loadModels(); // Load models at startup
 
 /**
  * @route   POST /api/uploads
@@ -54,7 +42,7 @@ router.post("/", upload.single("file"), async (req, res) => {
                     const dbDescriptor = Object.values(user.faceData); // Convert stored face data to array
                     const distance = faceapi.euclideanDistance(detectedDescriptor, dbDescriptor);
 
-                    if (distance < 0.5) {  // Face match threshold
+                    if (distance < 0.5) { // Face match threshold
                         matchedUsers.push(user._id);
                     }
                 }
@@ -80,93 +68,95 @@ router.post("/", upload.single("file"), async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 });
-router.post("/:uploadId/approve", async (req, res) => {
-    try {
-        const { userId } = req.body;
-        const upload = await Upload.findById(req.params.uploadId);
 
-        if (!upload) {
-            return res.status(404).json({ message: "Upload not found" });
-        }
 
-        // Find the user in the detectedUsers array
-        const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
+// router.post("/:uploadId/approve", async (req, res) => {
+//     try {
+//         const { userId } = req.body;
+//         const upload = await Upload.findById(req.params.uploadId);
 
-        if (!userApproval) {
-            return res.status(403).json({ message: "You are not in this upload" });
-        }
+//         if (!upload) {
+//             return res.status(404).json({ message: "Upload not found" });
+//         }
 
-        // Update status to "approved"
-        userApproval.status = "approved";
+//         // Find the user in the detectedUsers array
+//         const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
 
-        // Check if all detected users have approved
-        upload.checkApproval();
-        await upload.save();
+//         if (!userApproval) {
+//             return res.status(403).json({ message: "You are not in this upload" });
+//         }
 
-        res.json({ message: "Approval granted", finalStatus: upload.finalStatus });
+//         // Update status to "approved"
+//         userApproval.status = "approved";
 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
-    }
-});
-router.post("/:uploadId/reject", async (req, res) => {
-    try {
-        const { userId } = req.body;
-        const upload = await Upload.findById(req.params.uploadId);
+//         // Check if all detected users have approved
+//         upload.checkApproval();
+//         await upload.save();
 
-        if (!upload) {
-            return res.status(404).json({ message: "Upload not found" });
-        }
+//         res.json({ message: "Approval granted", finalStatus: upload.finalStatus });
 
-        const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ message: "Server error" });
+//     }
+// });
+// router.post("/:uploadId/reject", async (req, res) => {
+//     try {
+//         const { userId } = req.body;
+//         const upload = await Upload.findById(req.params.uploadId);
 
-        if (!userApproval) {
-            return res.status(403).json({ message: "You are not in this upload" });
-        }
+//         if (!upload) {
+//             return res.status(404).json({ message: "Upload not found" });
+//         }
 
-        // Update status to "rejected"
-        userApproval.status = "rejected";
+//         const userApproval = upload.detectedUsers.find(user => user.user.toString() === userId);
 
-        // If any user rejects, mark entire upload as "rejected"
-        upload.finalStatus = "rejected";
-        await upload.save();
+//         if (!userApproval) {
+//             return res.status(403).json({ message: "You are not in this upload" });
+//         }
 
-        res.json({ message: "Upload rejected", finalStatus: upload.finalStatus });
+//         // Update status to "rejected"
+//         userApproval.status = "rejected";
 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
-    }
-});
-router.get("/:uploadId/status", async (req, res) => {
-    try {
-        const upload = await Upload.findById(req.params.uploadId);
+//         // If any user rejects, mark entire upload as "rejected"
+//         upload.finalStatus = "rejected";
+//         await upload.save();
 
-        if (!upload) {
-            return res.status(404).json({ message: "Upload not found" });
-        }
+//         res.json({ message: "Upload rejected", finalStatus: upload.finalStatus });
 
-        res.json({ finalStatus: upload.finalStatus, detectedUsers: upload.detectedUsers });
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ message: "Server error" });
+//     }
+// });
+// router.get("/:uploadId/status", async (req, res) => {
+//     try {
+//         const upload = await Upload.findById(req.params.uploadId);
 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
-    }
-});
-router.get("/pending/:userId", async (req, res) => {
-    try {
-        const pendingUploads = await Upload.find({
-            "detectedUsers.user": req.params.userId,
-            "detectedUsers.status": "pending"
-        });
+//         if (!upload) {
+//             return res.status(404).json({ message: "Upload not found" });
+//         }
 
-        res.json(pendingUploads);
+//         res.json({ finalStatus: upload.finalStatus, detectedUsers: upload.detectedUsers });
 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
-    }
-});
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ message: "Server error" });
+//     }
+// });
+// router.get("/pending/:userId", async (req, res) => {
+//     try {
+//         const pendingUploads = await Upload.find({
+//             "detectedUsers.user": req.params.userId,
+//             "detectedUsers.status": "pending"
+//         });
 
-module.exports = router;
+//         res.json(pendingUploads);
+
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ message: "Server error" });
+//     }
+// });
+
+// module.exports = router;
